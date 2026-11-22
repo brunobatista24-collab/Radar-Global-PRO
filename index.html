@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Radar de Investimento Global PRO — Valor Intrínseco</title>
+  <title>Radar de Investimento Global PRO — Auto-Update</title>
   <style>
     body {
       background-color: #0b0f19;
@@ -62,6 +62,29 @@
     .btn-refresh:hover {
       background-color: #0369a1;
     }
+    .api-bar {
+      background-color: #111827;
+      border: 1px solid #1f2937;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 15px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+    }
+    .api-bar input {
+      width: auto;
+      min-width: 240px;
+      padding: 7px 10px;
+      background-color: #0b0f19;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #ffffff;
+      font-size: 12px;
+    }
     .controles {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -115,12 +138,10 @@
       display: flex;
       flex-direction: column;
       justify-content: space-between;
-      transition: transform 0.15s ease;
     }
     .card.comprar { border-left: 4px solid #10b981; }
     .card.aguardar { border-left: 4px solid #f59e0b; }
     .card.evitar { border-left: 4px solid #ef4444; }
-    
     .card-header {
       display: flex;
       justify-content: space-between;
@@ -154,7 +175,6 @@
     .badge-decisao.comprar { background-color: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
     .badge-decisao.aguardar { background-color: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
     .badge-decisao.evitar { background-color: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
-
     .badges-row {
       display: flex;
       gap: 6px;
@@ -169,7 +189,6 @@
     }
     .badge-tipo.acumulativo { background-color: rgba(99, 102, 241, 0.15); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.3); }
     .badge-tipo.dividendos { background-color: rgba(217, 119, 6, 0.15); color: #fbbf24; border: 1px solid rgba(217, 119, 6, 0.3); }
-    
     .badge-av {
       font-size: 10px;
       font-weight: bold;
@@ -178,7 +197,6 @@
       background-color: #1e293b;
       color: #38bdf8;
     }
-
     .valuation-grid {
       background-color: #030712;
       border: 1px solid #1f2937;
@@ -199,7 +217,6 @@
     .val-item strong {
       font-size: 13px;
     }
-
     .nota {
       font-size: 12px;
       color: #cbd5e1;
@@ -222,15 +239,26 @@
     <header>
       <div>
         <h1>🚀 Radar Global PRO</h1>
-        <p id="statusLeitura">Cotações, Valor Intrínseco e Margem de Segurança</p>
+        <p id="statusLeitura">Modo Automático • Valor Intrínseco & Margem de Segurança</p>
       </div>
       <div class="header-actions">
         <div class="timer-box">
-          🔄 Ciclo (2 min): <strong id="contador" style="color:#38bdf8;">02:00</strong>
+          🔄 Próxima atualização: <strong id="contador" style="color:#38bdf8;">02:00</strong>
         </div>
-        <button class="btn-refresh" onclick="forcarAtualizacao()">⚡ Atualizar Agora</button>
+        <button class="btn-refresh" onclick="atualizarTudo(true)">⚡ Atualizar Tudo Agora</button>
       </div>
     </header>
+
+    <div class="api-bar">
+      <div>
+        <strong>Fonte Automática (Finnhub API):</strong>
+        <span id="fonteEstado" style="color:#94a3b8;">A usar base local (insere a tua API Key gratuita para cotações ao vivo)</span>
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <input id="apiKeyInput" type="password" placeholder="Chave API Finnhub (opcional)">
+        <button class="btn-refresh" onclick="guardarApiKey()">Guardar & Sincronizar</button>
+      </div>
+    </div>
 
     <div class="controles">
       <select id="filtroSetor" onchange="renderizar()">
@@ -246,11 +274,11 @@
         <option value="Indústria">🏭 Indústria & Materiais</option>
         <option value="Cripto">🪙 Cripto-Stocks</option>
       </select>
-      <input id="pesquisa" oninput="renderizar()" type="text" placeholder="🔍 Pesquisar ticker ou empresa (ex: BYD, Nike, MP)...">
+      <input id="pesquisa" oninput="renderizar()" type="text" placeholder="🔍 Pesquisar ticker ou empresa (ex: BYDDY, NKE, MP)...">
     </div>
 
     <div class="filtros">
-      <button onclick="filtrarSinal('TODOS', this)" id="btn-TODOS" class="ativo">📋 Todos os Sinais</button>
+      <button onclick="filtrarSinal('TODOS', this)" id="btn-TODOS" class="ativo">📋 Todos</button>
       <button onclick="filtrarSinal('COMPRAR', this)" id="btn-COMPRAR">🟢 Boa Compra</button>
       <button onclick="filtrarSinal('MUITO_BARATO', this)" id="btn-MUITO_BARATO">💎 Muito Barato</button>
       <button onclick="filtrarSinal('BARATO', this)" id="btn-BARATO">💎 Barato</button>
@@ -264,70 +292,86 @@
   <script>
     let sinalAtivo = "TODOS";
     let segundosRestantes = 120;
+    let apiKey = localStorage.getItem("radar_finnhub_key") || "";
 
-    // Estrutura com valores numéricos (m = moeda, p = preço atual, vi = valor intrínseco)
+    if (apiKey) {
+      document.getElementById("apiKeyInput").value = apiKey;
+    }
+
+    // eps = Lucro por Ação base; g = taxa de crescimento anual estimada (%); peAlvo = múltiplo P/E justo
     const ativos = [
-      { t: "VWCE", n: "Vanguard FTSE All-World", s: "ETF", tipo: "ACUMULATIVO", m: "€", p: 125.40, vi: 132.00, pe: "22.5", dec: "COMPRAR", pot: "MUITO POTENCIAL", nota: "O ETF global definitivo para DCA de longo prazo." },
-      { t: "VUAA", n: "Vanguard S&P 500", s: "ETF", tipo: "ACUMULATIVO", m: "€", p: 102.80, vi: 108.00, pe: "25.0", dec: "COMPRAR", pot: "MUITO POTENCIAL", nota: "As 500 maiores empresas dos EUA." },
-      { t: "EQQQ", n: "Invesco Nasdaq-100", s: "ETF", tipo: "ACUMULATIVO", m: "€", p: 450.20, vi: 510.00, pe: "28.5", dec: "COMPRAR", pot: "MUITO POTENCIAL", nota: "Foco total nas 100 maiores tecnológicas dos EUA." },
-      { t: "VHYL", n: "Vanguard High Dividend Yield", s: "ETF", tipo: "DIVIDENDOS", m: "€", p: 64.50, vi: 73.00, pe: "15.2", dec: "COMPRAR", pot: "BOM POTENCIAL", nota: "ETF global focado em empresas pagadoras de dividendos." },
-      { t: "BYDDY", n: "BYD Company Ltd.", s: "Consumo", tipo: "ACUMULATIVO", m: "$", p: 28.50, vi: 36.00, pe: "18.5", dec: "COMPRAR", pot: "MUITO POTENCIAL", nota: "Líder global em veículos elétricos e baterias com forte integração vertical." },
-      { t: "NKE", n: "Nike Inc.", s: "Consumo", tipo: "DIVIDENDOS", m: "$", p: 78.20, vi: 92.00, pe: "24.5", dec: "AGUARDAR", pot: "BOM POTENCIAL", nota: "Líder global em calçado e vestuário desportivo; reestruturação em curso." },
-      { t: "MP", n: "MP Materials Corp.", s: "Indústria", tipo: "ACUMULATIVO", m: "$", p: 18.50, vi: 22.80, pe: "28.0", dec: "AGUARDAR", pot: "MUITO POTENCIAL", nota: "Principal produtor ocidental de terras raras e ímanes permanentes." },
-      { t: "GLW", n: "Corning Inc.", s: "Indústria", tipo: "DIVIDENDOS", m: "$", p: 45.80, vi: 53.50, pe: "21.0", dec: "COMPRAR", pot: "MUITO POTENCIAL", nota: "Fibra ótica e vidro avançado para infraestruturas de dados." },
-      { t: "MOG.A", n: "Moog Inc.", s: "Indústria", tipo: "DIVIDENDOS", m: "$", p: 175.00, vi: 182.00, pe: "22.5", dec: "COMPRAR", pot: "BOM POTENCIAL", nota: "Sistemas de controlo de precisão para aeroespacial e defesa." },
-      { t: "MSFT", n: "Microsoft Corp.", s: "Tecnologia", tipo: "ACUMULATIVO", m: "$", p: 428.50, vi: 455.00, pe: "31.2", dec: "COMPRAR", pot: "MUITO POTENCIAL", nota: "Líder em Cloud Azure e IA empresarial." },
-      { t: "AAPL", n: "Apple Inc.", s: "Tecnologia", tipo: "ACUMULATIVO", m: "$", p: 225.00, vi: 220.00, pe: "32.0", dec: "AGUARDAR", pot: "BOM POTENCIAL", nota: "Ecossistema incomparável, múltiplo esticado." },
-      { t: "ASML", n: "ASML Holding", s: "Tecnologia", tipo: "ACUMULATIVO", m: "€", p: 685.00, vi: 810.00, pe: "28.5", dec: "COMPRAR", pot: "MUITO POTENCIAL", nota: "Monopólio de litografia EUV para semicondutores." },
-      { t: "NVDA", n: "NVIDIA Corp.", s: "Tecnologia", tipo: "ACUMULATIVO", m: "$", p: 138.60, vi: 142.00, pe: "36.5", dec: "AGUARDAR", pot: "MUITO POTENCIAL", nota: "Domínio absoluto em chips de IA." },
-      { t: "INTC", n: "Intel Corp.", s: "Tecnologia", tipo: "DIVIDENDOS", m: "$", p: 22.80, vi: 18.00, pe: "Prejuízo", dec: "NÃO COMPRAR", pot: "POUCO POTENCIAL", nota: "Perda de quota de mercado e reestruturação pesada." },
-      { t: "KLAC", n: "KLA Corporation", s: "Tecnologia", tipo: "DIVIDENDOS", m: "$", p: 740.00, vi: 765.00, pe: "27.5", dec: "COMPRAR", pot: "MUITO POTENCIAL", nota: "Inspeção e controlo para fabrico de semicondutores." },
-      { t: "SNPS", n: "Synopsys Inc.", s: "Tecnologia", tipo: "ACUMULATIVO", m: "$", p: 520.00, vi: 545.00, pe: "38.0", dec: "COMPRAR", pot: "MUITO POTENCIAL", nota: "Software de design eletrónico (EDA)." },
-      { t: "NXPI", n: "NXP Semiconductors", s: "Tecnologia", tipo: "DIVIDENDOS", m: "$", p: 215.00, vi: 255.00, pe: "17.0", dec: "COMPRAR", pot: "BOM POTENCIAL", nota: "Semicondutores automotivos e industriais." },
-      { t: "ANET", n: "Arista Networks", s: "Tecnologia", tipo: "ACUMULATIVO", m: "$", p: 390.00, vi: 405.00, pe: "39.0", dec: "COMPRAR", pot: "MUITO POTENCIAL", nota: "Switches de rede de alta velocidade para IA." },
-      { t: "APP", n: "AppLovin Corp.", s: "Tecnologia", tipo: "ACUMULATIVO", m: "$", p: 285.00, vi: 295.00, pe: "34.0", dec: "COMPRAR", pot: "MUITO POTENCIAL", nota: "Monetização mobile potenciada por IA." },
-      { t: "LITE", n: "Lumentum Holdings", s: "Tecnologia", tipo: "ACUMULATIVO", m: "$", p: 68.20, vi: 79.50, pe: "29.0", dec: "COMPRAR", pot: "MUITO POTENCIAL", nota: "Componentes óticos para redes e Data Centers." },
-      { t: "CRDO", n: "Credo Technology", s: "Tecnologia", tipo: "ACUMULATIVO", m: "$", p: 38.50, vi: 32.00, pe: "45.0", dec: "AGUARDAR", pot: "MUITO POTENCIAL", nota: "Conectividade de alta velocidade para centros de dados." },
-      { t: "NOK", n: "Nokia Oyj", s: "Tecnologia", tipo: "DIVIDENDOS", m: "€", p: 4.10, vi: 5.40, pe: "14.0", dec: "AGUARDAR", pot: "POUCO", nota: "Equipamentos de rede 5G." },
-      { t: "FSLR", n: "First Solar", s: "Energia", tipo: "ACUMULATIVO", m: "$", p: 192.40, vi: 255.00, pe: "13.5", dec: "COMPRAR", pot: "MUITO POTENCIAL", nota: "P/E baixo e encomendas cheias até 2028." },
-      { t: "VST", n: "Vistra Corp.", s: "Energia", tipo: "DIVIDENDOS", m: "$", p: 138.37, vi: 162.00, pe: "23.3", dec: "COMPRAR", pot: "MUITO POTENCIAL", nota: "Energia nuclear e gás para Data Centers de IA." },
-      { t: "NEE", n: "NextEra Energy", s: "Energia", tipo: "DIVIDENDOS", m: "$", p: 83.73, vi: 96.00, pe: "22.0", dec: "COMPRAR", pot: "BOM POTENCIAL", nota: "Líder em renováveis e rede elétrica." },
-      { t: "GALP.LS", n: "Galp Energia", s: "Energia", tipo: "DIVIDENDOS", m: "€", p: 14.80, vi: 19.50, pe: "7.5", dec: "COMPRAR", pot: "BOM POTENCIAL", nota: "Forte fluxo de caixa livre e dividendos geradores." },
-      { t: "XOM", n: "Exxon Mobil", s: "Energia", tipo: "DIVIDENDOS", m: "$", p: 116.80, vi: 148.00, pe: "14.2", dec: "COMPRAR", pot: "BOM POTENCIAL", nota: "Balanço blindado e retorno massivo aos acionistas." },
-      { t: "ENPH", n: "Enphase Energy", s: "Energia", tipo: "ACUMULATIVO", m: "$", p: 25.65, vi: 21.00, pe: "38.0", dec: "NÃO COMPRAR", pot: "POUCO", nota: "Procura residencial solar pressionada." },
-      { t: "PLUG", n: "Plug Power", s: "Energia", tipo: "ACUMULATIVO", m: "$", p: 1.80, vi: 0.90, pe: "Prejuízo", dec: "NÃO COMPRAR", pot: "POUCO", nota: "Queima constante de caixa e diluição acionista." },
-      { t: "O", n: "Realty Income", s: "Imobiliário", tipo: "DIVIDENDOS", m: "$", p: 59.40, vi: 74.50, pe: "14.2", dec: "COMPRAR", pot: "BOM POTENCIAL", nota: "Dividendos mensais seguros (~5.3% yield)." },
-      { t: "VICI", n: "VICI Properties", s: "Imobiliário", tipo: "DIVIDENDOS", m: "$", p: 31.50, vi: 40.00, pe: "13.2", dec: "COMPRAR", pot: "BOM POTENCIAL", nota: "REIT especializado em ativos de entretenimento e lazer." },
-      { t: "PLD", n: "Prologis REIT", s: "Imobiliário", tipo: "DIVIDENDOS", m: "$", p: 115.20, vi: 134.00, pe: "20.5", dec: "COMPRAR", pot: "BOM POTENCIAL", nota: "Líder mundial em armazéns logísticos." },
-      { t: "OPI", n: "Office Properties", s: "Imobiliário", tipo: "DIVIDENDOS", m: "$", p: 1.45, vi: 0.80, pe: "Prejuízo", dec: "NÃO COMPRAR", pot: "POUCO", nota: "Escritórios comerciais com dívida pesada." },
-      { t: "NVO", n: "Novo Nordisk", s: "Saúde", tipo: "DIVIDENDOS", m: "$", p: 112.50, vi: 132.00, pe: "27.8", dec: "COMPRAR", pot: "MUITO POTENCIAL", nota: "Líder em tratamentos metabólicos e obesidade." },
-      { t: "UNH", n: "UnitedHealth Group", s: "Saúde", tipo: "DIVIDENDOS", m: "$", p: 560.00, vi: 645.00, pe: "24.0", dec: "COMPRAR", pot: "MUITO POTENCIAL", nota: "Maior empresa de saúde e seguros dos EUA." },
-      { t: "PFE", n: "Pfizer Inc.", s: "Saúde", tipo: "DIVIDENDOS", m: "$", p: 28.10, vi: 29.00, pe: "18.5", dec: "NÃO COMPRAR", pot: "POUCO", nota: "Receitas estagnadas pós-pandemia." },
-      { t: "SOFI", n: "SoFi Technologies", s: "Financeiro", tipo: "ACUMULATIVO", m: "$", p: 11.20, vi: 13.80, pe: "35.0", dec: "COMPRAR", pot: "MUITO POTENCIAL", nota: "Neobanco e plataforma fintech em forte expansão." },
-      { t: "BRK.B", n: "Berkshire Hathaway", s: "Financeiro", tipo: "ACUMULATIVO", m: "$", p: 445.00, vi: 515.00, pe: "16.5", dec: "COMPRAR", pot: "BOM POTENCIAL", nota: "O conglomerado de Warren Buffett." },
-      { t: "JPM", n: "JPMorgan Chase", s: "Financeiro", tipo: "DIVIDENDOS", m: "$", p: 225.40, vi: 285.00, pe: "12.6", dec: "COMPRAR", pot: "BOM POTENCIAL", nota: "O banco mais bem gerido do mundo ocidental." },
-      { t: "BCP.LS", n: "Millennium BCP", s: "Financeiro", tipo: "DIVIDENDOS", m: "€", p: 0.46, vi: 0.62, pe: "6.8", dec: "COMPRAR", pot: "BOM POTENCIAL", nota: "Múltiplo P/E muito baixo (~6.8x) e boa rentabilidade." },
-      { t: "EXPN", n: "Experian plc", s: "Financeiro", tipo: "DIVIDENDOS", m: "£", p: 38.50, vi: 40.00, pe: "31.0", dec: "COMPRAR", pot: "BOM POTENCIAL", nota: "Dados de crédito e análise de risco." },
-      { t: "AMZN", n: "Amazon.com", s: "Consumo", tipo: "ACUMULATIVO", m: "$", p: 198.20, vi: 212.00, pe: "34.0", dec: "COMPRAR", pot: "MUITO POTENCIAL", nota: "Expansão de margens na AWS e publicidade." },
-      { t: "NFLX", n: "Netflix Inc.", s: "Comunicações", tipo: "ACUMULATIVO", m: "$", p: 745.00, vi: 775.00, pe: "38.5", dec: "COMPRAR", pot: "MUITO POTENCIAL", nota: "Líder absoluto de streaming global." },
-      { t: "ITX.MC", n: "Inditex (Zara)", s: "Consumo", tipo: "DIVIDENDOS", m: "€", p: 45.20, vi: 47.50, pe: "26.0", dec: "COMPRAR", pot: "MUITO POTENCIAL", nota: "Referência mundial em fast-fashion." },
-      { t: "JMT.LS", n: "Jerónimo Martins", s: "Consumo", tipo: "DIVIDENDOS", m: "€", p: 18.50, vi: 21.80, pe: "17.5", dec: "COMPRAR", pot: "BOM POTENCIAL", nota: "Dono do Pingo Doce e Biedronka." },
-      { t: "MCD", n: "McDonald's Corp.", s: "Consumo", tipo: "DIVIDENDOS", m: "$", p: 298.50, vi: 310.00, pe: "25.0", dec: "COMPRAR", pot: "BOM POTENCIAL", nota: "Defensiva clássica com fluxo imobiliário." },
-      { t: "KO", n: "Coca-Cola Co.", s: "Consumo", tipo: "DIVIDENDOS", m: "$", p: 65.80, vi: 75.50, pe: "22.8", dec: "COMPRAR", pot: "BOM POTENCIAL", nota: "Dividend King com 60+ anos de aumentos." },
-      { t: "WYNN", n: "Wynn Resorts", s: "Consumo", tipo: "DIVIDENDOS", m: "$", p: 88.40, vi: 105.00, pe: "18.0", dec: "AGUARDAR", pot: "BOM POTENCIAL", nota: "Resorts de luxo e jogo (Las Vegas e Macau)." },
-      { t: "RH", n: "Restoration Hardware", s: "Consumo", tipo: "ACUMULATIVO", m: "$", p: 315.00, vi: 325.00, pe: "26.0", dec: "AGUARDAR", pot: "MUITO POTENCIAL", nota: "Retalho de mobiliário de luxo." },
-      { t: "LCID", n: "Lucid Group", s: "Consumo", tipo: "ACUMULATIVO", m: "$", p: 2.25, vi: 1.20, pe: "Prejuízo", dec: "NÃO COMPRAR", pot: "POUCO", nota: "Prejuízos massivos e diluição acionista." },
-      { t: "GOOGL", n: "Alphabet (Google)", s: "Comunicações", tipo: "ACUMULATIVO", m: "$", p: 172.50, vi: 205.00, pe: "21.4", dec: "COMPRAR", pot: "MUITO POTENCIAL", nota: "A mais barata das Big Tech." },
-      { t: "META", n: "Meta Platforms", s: "Comunicações", tipo: "ACUMULATIVO", m: "$", p: 580.00, vi: 610.00, pe: "26.5", dec: "COMPRAR", pot: "MUITO POTENCIAL", nota: "Monopólio das redes sociais e foco em IA." },
-      { t: "GRAB", n: "Grab Holdings", s: "Comunicações", tipo: "ACUMULATIVO", m: "$", p: 4.15, vi: 4.90, pe: "Prejuízo", dec: "AGUARDAR", pot: "MUITO POTENCIAL", nota: "Super-app líder no Sudeste Asiático." },
-      { t: "VRT", n: "Vertiv Holdings", s: "Indústria", tipo: "ACUMULATIVO", m: "$", p: 112.50, vi: 118.00, pe: "32.0", dec: "COMPRAR", pot: "MUITO POTENCIAL", nota: "Refrigeração e energia para Data Centers de IA." },
-      { t: "ETN", n: "Eaton Corp.", s: "Indústria", tipo: "DIVIDENDOS", m: "$", p: 332.10, vi: 345.00, pe: "29.5", dec: "COMPRAR", pot: "MUITO POTENCIAL", nota: "Equipamento elétrico essencial para redes." },
-      { t: "EME", n: "Emcor Group", s: "Indústria", tipo: "DIVIDENDOS", m: "$", p: 410.00, vi: 425.00, pe: "26.0", dec: "COMPRAR", pot: "MUITO POTENCIAL", nota: "Construção elétrica ligada a infraestruturas." },
-      { t: "MOD", n: "Modine Manufacturing", s: "Indústria", tipo: "ACUMULATIVO", m: "$", p: 135.00, vi: 158.00, pe: "22.0", dec: "COMPRAR", pot: "MUITO POTENCIAL", nota: "Gestão térmica para data centers." },
-      { t: "FCX", n: "Freeport-McMoRan", s: "Indústria", tipo: "DIVIDENDOS", m: "$", p: 46.20, vi: 54.00, pe: "21.0", dec: "COMPRAR", pot: "MUITO POTENCIAL", nota: "Produtor líder de cobre para eletrificação." },
-      { t: "BA", n: "Boeing Co.", s: "Indústria", tipo: "DIVIDENDOS", m: "$", p: 155.00, vi: 125.00, pe: "Prejuízo", dec: "NÃO COMPRAR", pot: "POUCO", nota: "Problemas crónicos de produção e dívida." },
-      { t: "MSTR", n: "MicroStrategy", s: "Cripto", tipo: "ACUMULATIVO", m: "$", p: 245.00, vi: 195.00, pe: "65.0", dec: "AGUARDAR", pot: "MUITO POTENCIAL", nota: "Ação altamente alavancada à Bitcoin." }
+      { t: "VWCE", apiSym: null, n: "Vanguard FTSE All-World", s: "ETF", tipo: "ACUMULATIVO", m: "€", p: 125.40, eps: 5.58, g: 7, peAlvo: 23.6, pot: "MUITO POTENCIAL", nota: "ETF global para DCA de longo prazo." },
+      { t: "VUAA", apiSym: null, n: "Vanguard S&P 500", s: "ETF", tipo: "ACUMULATIVO", m: "€", p: 102.80, eps: 4.11, g: 8, peAlvo: 26.3, pot: "MUITO POTENCIAL", nota: "As 500 maiores empresas dos EUA." },
+      { t: "EQQQ", apiSym: null, n: "Invesco Nasdaq-100", s: "ETF", tipo: "ACUMULATIVO", m: "€", p: 450.20, eps: 16.08, g: 11, peAlvo: 31.7, pot: "MUITO POTENCIAL", nota: "100 maiores tecnológicas dos EUA." },
+      { t: "VHYL", apiSym: null, n: "Vanguard High Dividend Yield", s: "ETF", tipo: "DIVIDENDOS", m: "€", p: 64.50, eps: 4.24, g: 5, peAlvo: 17.2, pot: "BOM POTENCIAL", nota: "Foco em empresas pagadoras de dividendos." },
+      { t: "BYDDY", apiSym: "BYDDY", n: "BYD Company Ltd.", s: "Consumo", tipo: "ACUMULATIVO", m: "$", p: 28.50, eps: 1.54, g: 14, peAlvo: 23.4, pot: "MUITO POTENCIAL", nota: "Líder global em veículos elétricos e baterias." },
+      { t: "NKE", apiSym: "NKE", n: "Nike Inc.", s: "Consumo", tipo: "DIVIDENDOS", m: "$", p: 78.20, eps: 3.19, g: 6, peAlvo: 28.8, pot: "BOM POTENCIAL", nota: "Calçado e vestuário desportivo; reestruturação." },
+      { t: "MP", apiSym: "MP", n: "MP Materials Corp.", s: "Indústria", tipo: "ACUMULATIVO", m: "$", p: 18.50, eps: 0.66, g: 12, peAlvo: 34.5, pot: "MUITO POTENCIAL", nota: "Produtor ocidental de terras raras e ímanes." },
+      { t: "GLW", apiSym: "GLW", n: "Corning Inc.", s: "Indústria", tipo: "DIVIDENDOS", m: "$", p: 45.80, eps: 2.18, g: 8, peAlvo: 24.5, pot: "MUITO POTENCIAL", nota: "Fibra ótica e vidro avançado para redes e IA." },
+      { t: "MOG.A", apiSym: "MOG.A", n: "Moog Inc.", s: "Indústria", tipo: "DIVIDENDOS", m: "$", p: 175.00, eps: 7.78, g: 7, peAlvo: 23.4, pot: "BOM POTENCIAL", nota: "Sistemas de controlo de precisão para defesa." },
+      { t: "MSFT", apiSym: "MSFT", n: "Microsoft Corp.", s: "Tecnologia", tipo: "ACUMULATIVO", m: "$", p: 428.50, eps: 13.73, g: 12, peAlvo: 33.1, pot: "MUITO POTENCIAL", nota: "Líder em Cloud Azure e IA empresarial." },
+      { t: "AAPL", apiSym: "AAPL", n: "Apple Inc.", s: "Tecnologia", tipo: "ACUMULATIVO", m: "$", p: 225.00, eps: 7.03, g: 7, peAlvo: 31.3, pot: "BOM POTENCIAL", nota: "Ecossistema global e recompra de ações." },
+      { t: "ASML", apiSym: "ASML", n: "ASML Holding", s: "Tecnologia", tipo: "ACUMULATIVO", m: "€", p: 685.00, eps: 24.04, g: 13, peAlvo: 33.7, pot: "MUITO POTENCIAL", nota: "Litografia EUV para semicondutores." },
+      { t: "NVDA", apiSym: "NVDA", n: "NVIDIA Corp.", s: "Tecnologia", tipo: "ACUMULATIVO", m: "$", p: 138.60, eps: 3.80, g: 18, peAlvo: 37.4, pot: "MUITO POTENCIAL", nota: "Infraestrutura de chips e IA." },
+      { t: "INTC", apiSym: "INTC", n: "Intel Corp.", s: "Tecnologia", tipo: "DIVIDENDOS", m: "$", p: 22.80, eps: -0.40, g: 0, peAlvo: 15.0, pot: "POUCO POTENCIAL", nota: "Reestruturação operacional." },
+      { t: "KLAC", apiSym: "KLAC", n: "KLA Corporation", s: "Tecnologia", tipo: "DIVIDENDOS", m: "$", p: 740.00, eps: 26.91, g: 10, peAlvo: 28.4, pot: "MUITO POTENCIAL", nota: "Inspeção e controlo de semicondutores." },
+      { t: "SNPS", apiSym: "SNPS", n: "Synopsys Inc.", s: "Tecnologia", tipo: "ACUMULATIVO", m: "$", p: 520.00, eps: 13.68, g: 12, peAlvo: 39.8, pot: "MUITO POTENCIAL", nota: "Software EDA para design de chips." },
+      { t: "NXPI", apiSym: "NXPI", n: "NXP Semiconductors", s: "Tecnologia", tipo: "DIVIDENDOS", m: "$", p: 215.00, eps: 12.65, g: 8, peAlvo: 20.2, pot: "BOM POTENCIAL", nota: "Semicondutores automóveis e industriais." },
+      { t: "ANET", apiSym: "ANET", n: "Arista Networks", s: "Tecnologia", tipo: "ACUMULATIVO", m: "$", p: 390.00, eps: 10.00, g: 14, peAlvo: 40.5, pot: "MUITO POTENCIAL", nota: "Redes de alta velocidade para data centers." },
+      { t: "APP", apiSym: "APP", n: "AppLovin Corp.", s: "Tecnologia", tipo: "ACUMULATIVO", m: "$", p: 285.00, eps: 8.38, g: 14, peAlvo: 35.2, pot: "MUITO POTENCIAL", nota: "Monetização e publicidade mobile com IA." },
+      { t: "LITE", apiSym: "LITE", n: "Lumentum Holdings", s: "Tecnologia", tipo: "ACUMULATIVO", m: "$", p: 68.20, eps: 2.35, g: 10, peAlvo: 33.8, pot: "MUITO POTENCIAL", nota: "Ótica para redes e data centers." },
+      { t: "CRDO", apiSym: "CRDO", n: "Credo Technology", s: "Tecnologia", tipo: "ACUMULATIVO", m: "$", p: 38.50, eps: 0.86, g: 12, peAlvo: 37.2, pot: "MUITO POTENCIAL", nota: "Conectividade de alta velocidade." },
+      { t: "NOK", apiSym: "NOK", n: "Nokia Oyj", s: "Tecnologia", tipo: "DIVIDENDOS", m: "€", p: 4.10, eps: 0.29, g: 5, peAlvo: 18.6, pot: "POUCO", nota: "Equipamentos de rede 5G." },
+      { t: "FSLR", apiSym: "FSLR", n: "First Solar", s: "Energia", tipo: "ACUMULATIVO", m: "$", p: 192.40, eps: 14.25, g: 10, peAlvo: 17.9, pot: "MUITO POTENCIAL", nota: "Painéis solares com carteira de encomendas." },
+      { t: "VST", apiSym: "VST", n: "Vistra Corp.", s: "Energia", tipo: "DIVIDENDOS", m: "$", p: 138.37, eps: 5.94, g: 11, peAlvo: 27.3, pot: "MUITO POTENCIAL", nota: "Geração elétrica para data centers." },
+      { t: "NEE", apiSym: "NEE", n: "NextEra Energy", s: "Energia", tipo: "DIVIDENDOS", m: "$", p: 83.73, eps: 3.81, g: 8, peAlvo: 25.2, pot: "BOM POTENCIAL", nota: "Renováveis e rede elétrica." },
+      { t: "GALP.LS", apiSym: null, n: "Galp Energia", s: "Energia", tipo: "DIVIDENDOS", m: "€", p: 14.80, eps: 1.97, g: 6, peAlvo: 9.9, pot: "BOM POTENCIAL", nota: "Fluxo de caixa livre e dividendos." },
+      { t: "XOM", apiSym: "XOM", n: "Exxon Mobil", s: "Energia", tipo: "DIVIDENDOS", m: "$", p: 116.80, eps: 8.23, g: 6, peAlvo: 18.0, pot: "BOM POTENCIAL", nota: "Integração energética e retorno ao acionista." },
+      { t: "ENPH", apiSym: "ENPH", n: "Enphase Energy", s: "Energia", tipo: "ACUMULATIVO", m: "$", p: 25.65, eps: 0.68, g: 4, peAlvo: 30.9, pot: "POUCO", nota: "Procura solar residencial." },
+      { t: "PLUG", apiSym: "PLUG", n: "Plug Power", s: "Energia", tipo: "ACUMULATIVO", m: "$", p: 1.80, eps: -0.85, g: 0, peAlvo: 10.0, pot: "POUCO", nota: "Hidrogénio; forte consumo de caixa." },
+      { t: "O", apiSym: "O", n: "Realty Income", s: "Imobiliário", tipo: "DIVIDENDOS", m: "$", p: 59.40, eps: 4.18, g: 5, peAlvo: 17.8, pot: "BOM POTENCIAL", nota: "REIT com dividendos mensais." },
+      { t: "VICI", apiSym: "VICI", n: "VICI Properties", s: "Imobiliário", tipo: "DIVIDENDOS", m: "$", p: 31.50, eps: 2.39, g: 6, peAlvo: 16.7, pot: "BOM POTENCIAL", nota: "REIT de lazer e entretenimento." },
+      { t: "PLD", apiSym: "PLD", n: "Prologis REIT", s: "Imobiliário", tipo: "DIVIDENDOS", m: "$", p: 115.20, eps: 5.62, g: 7, peAlvo: 23.8, pot: "BOM POTENCIAL", nota: "Logística industrial global." },
+      { t: "OPI", apiSym: "OPI", n: "Office Properties", s: "Imobiliário", tipo: "DIVIDENDOS", m: "$", p: 1.45, eps: -0.50, g: 0, peAlvo: 10.0, pot: "POUCO", nota: "Escritórios comerciais com alavancagem." },
+      { t: "NVO", apiSym: "NVO", n: "Novo Nordisk", s: "Saúde", tipo: "DIVIDENDOS", m: "$", p: 112.50, eps: 4.05, g: 12, peAlvo: 32.6, pot: "MUITO POTENCIAL", nota: "Terapias metabólicas." },
+      { t: "UNH", apiSym: "UNH", n: "UnitedHealth Group", s: "Saúde", tipo: "DIVIDENDOS", m: "$", p: 560.00, eps: 23.33, g: 9, peAlvo: 27.6, pot: "MUITO POTENCIAL", nota: "Saúde e seguros nos EUA." },
+      { t: "PFE", apiSym: "PFE", n: "Pfizer Inc.", s: "Saúde", tipo: "DIVIDENDOS", m: "$", p: 28.10, eps: 1.52, g: 4, peAlvo: 19.1, pot: "POUCO", nota: "Farmacêutica com pipeline em transição." },
+      { t: "SOFI", apiSym: "SOFI", n: "SoFi Technologies", s: "Financeiro", tipo: "ACUMULATIVO", m: "$", p: 11.20, eps: 0.32, g: 16, peAlvo: 43.1, pot: "MUITO POTENCIAL", nota: "Plataforma financeira digital." },
+      { t: "BRK.B", apiSym: "BRK.B", n: "Berkshire Hathaway", s: "Financeiro", tipo: "ACUMULATIVO", m: "$", p: 445.00, eps: 26.97, g: 7, peAlvo: 19.1, pot: "BOM POTENCIAL", nota: "Conglomerado diversificado com elevada liquidez." },
+      { t: "JPM", apiSym: "JPM", n: "JPMorgan Chase", s: "Financeiro", tipo: "DIVIDENDOS", m: "$", p: 225.40, eps: 17.89, g: 6, peAlvo: 15.9, pot: "BOM POTENCIAL", nota: "Banca global e gestão de ativos." },
+      { t: "BCP.LS", apiSym: null, n: "Millennium BCP", s: "Financeiro", tipo: "DIVIDENDOS", m: "€", p: 0.46, eps: 0.068, g: 6, peAlvo: 9.1, pot: "BOM POTENCIAL", nota: "Banca com múltiplo contido." },
+      { t: "EXPN", apiSym: null, n: "Experian plc", s: "Financeiro", tipo: "DIVIDENDOS", m: "£", p: 38.50, eps: 1.24, g: 8, peAlvo: 32.3, pot: "BOM POTENCIAL", nota: "Informação de crédito e dados." },
+      { t: "AMZN", apiSym: "AMZN", n: "Amazon.com", s: "Consumo", tipo: "ACUMULATIVO", m: "$", p: 198.20, eps: 5.83, g: 13, peAlvo: 36.4, pot: "MUITO POTENCIAL", nota: "AWS, publicidade e retalho." },
+      { t: "NFLX", apiSym: "NFLX", n: "Netflix Inc.", s: "Comunicações", tipo: "ACUMULATIVO", m: "$", p: 745.00, eps: 19.35, g: 12, peAlvo: 40.1, pot: "MUITO POTENCIAL", nota: "Streaming global." },
+      { t: "ITX.MC", apiSym: null, n: "Inditex (Zara)", s: "Consumo", tipo: "DIVIDENDOS", m: "€", p: 45.20, eps: 1.74, g: 8, peAlvo: 27.3, pot: "MUITO POTENCIAL", nota: "Retalho de moda global." },
+      { t: "JMT.LS", apiSym: null, n: "Jerónimo Martins", s: "Consumo", tipo: "DIVIDENDOS", m: "€", p: 18.50, eps: 1.06, g: 7, peAlvo: 20.6, pot: "BOM POTENCIAL", nota: "Distribuição alimentar." },
+      { t: "MCD", apiSym: "MCD", n: "McDonald's Corp.", s: "Consumo", tipo: "DIVIDENDOS", m: "$", p: 298.50, eps: 11.94, g: 6, peAlvo: 26.0, pot: "BOM POTENCIAL", nota: "Restauração e imobiliário." },
+      { t: "KO", apiSym: "KO", n: "Coca-Cola Co.", s: "Consumo", tipo: "DIVIDENDOS", m: "$", p: 65.80, eps: 2.89, g: 5, peAlvo: 26.1, pot: "BOM POTENCIAL", nota: "Bebidas e distribuição global." },
+      { t: "WYNN", apiSym: "WYNN", n: "Wynn Resorts", s: "Consumo", tipo: "DIVIDENDOS", m: "$", p: 88.40, eps: 4.91, g: 7, peAlvo: 21.4, pot: "BOM POTENCIAL", nota: "Resorts e entretenimento." },
+      { t: "RH", apiSym: "RH", n: "Restoration Hardware", s: "Consumo", tipo: "ACUMULATIVO", m: "$", p: 315.00, eps: 12.12, g: 8, peAlvo: 26.8, pot: "MUITO POTENCIAL", nota: "Mobiliário e design." },
+      { t: "LCID", apiSym: "LCID", n: "Lucid Group", s: "Consumo", tipo: "ACUMULATIVO", m: "$", p: 2.25, eps: -1.10, g: 0, peAlvo: 10.0, pot: "POUCO", nota: "Veículos elétricos em fase de escala." },
+      { t: "GOOGL", apiSym: "GOOGL", n: "Alphabet (Google)", s: "Comunicações", tipo: "ACUMULATIVO", m: "$", p: 172.50, eps: 8.06, g: 11, peAlvo: 25.4, pot: "MUITO POTENCIAL", nota: "Pesquisa, YouTube, Cloud e IA." },
+      { t: "META", apiSym: "META", n: "Meta Platforms", s: "Comunicações", tipo: "ACUMULATIVO", m: "$", p: 580.00, eps: 21.89, g: 11, peAlvo: 27.9, pot: "MUITO POTENCIAL", nota: "Redes sociais e publicidade digital." },
+      { t: "GRAB", apiSym: "GRAB", n: "Grab Holdings", s: "Comunicações", tipo: "ACUMULATIVO", m: "$", p: 4.15, eps: 0.08, g: 12, peAlvo: 61.3, pot: "MUITO POTENCIAL", nota: "Mobilidade e entregas no Sudeste Asiático." },
+      { t: "VRT", apiSym: "VRT", n: "Vertiv Holdings", s: "Indústria", tipo: "ACUMULATIVO", m: "$", p: 112.50, eps: 3.52, g: 13, peAlvo: 33.5, pot: "MUITO POTENCIAL", nota: "Energia e refrigeração para data centers." },
+      { t: "ETN", apiSym: "ETN", n: "Eaton Corp.", s: "Indústria", tipo: "DIVIDENDOS", m: "$", p: 332.10, eps: 11.26, g: 9, peAlvo: 30.6, pot: "MUITO POTENCIAL", nota: "Gestão de energia e redes elétricas." },
+      { t: "EME", apiSym: "EME", n: "Emcor Group", s: "Indústria", tipo: "DIVIDENDOS", m: "$", p: 410.00, eps: 15.77, g: 9, peAlvo: 27.0, pot: "MUITO POTENCIAL", nota: "Engenharia elétrica e mecânica." },
+      { t: "MOD", apiSym: "MOD", n: "Modine Manufacturing", s: "Indústria", tipo: "ACUMULATIVO", m: "$", p: 135.00, eps: 6.14, g: 11, peAlvo: 25.7, pot: "MUITO POTENCIAL", nota: "Soluções térmicas industriais e data centers." },
+      { t: "FCX", apiSym: "FCX", n: "Freeport-McMoRan", s: "Indústria", tipo: "DIVIDENDOS", m: "$", p: 46.20, eps: 2.20, g: 7, peAlvo: 24.5, pot: "MUITO POTENCIAL", nota: "Extração de cobre e minerais." },
+      { t: "BA", apiSym: "BA", n: "Boeing Co.", s: "Indústria", tipo: "DIVIDENDOS", m: "$", p: 155.00, eps: -5.20, g: 0, peAlvo: 15.0, pot: "POUCO", nota: "Aviação comercial e defesa." },
+      { t: "MSTR", apiSym: "MSTR", n: "MicroStrategy", s: "Cripto", tipo: "ACUMULATIVO", m: "$", p: 245.00, eps: 3.77, g: 8, peAlvo: 51.7, pot: "MUITO POTENCIAL", nota: "Software empresarial e tesouraria em Bitcoin." }
     ];
+
+    function calcularValorIntrinseco(a) {
+      if (a.eps <= 0) {
+        return Number((a.p * 0.65).toFixed(2));
+      }
+      // Projeção a 5 anos descontada a 10%
+      const eps5Anos = a.eps * Math.pow(1 + (a.g / 100), 5);
+      const valorFuturo = eps5Anos * a.peAlvo;
+      const vi = valorFuturo / Math.pow(1.10, 5);
+      return Number(vi.toFixed(2));
+    }
 
     function calcularAvaliacao(p, vi) {
       const margem = ((vi - p) / vi) * 100;
@@ -338,20 +382,62 @@
       return "MUITO CARO";
     }
 
-    function simularOscilacaoMercado() {
-      ativos.forEach(a => {
-        // Variação realista entre -1.2% e +1.2% a cada ciclo de atualização
-        const variacao = 1 + ((Math.random() - 0.5) * 0.024);
-        a.p = Number((a.p * variacao).toFixed(2));
-      });
-      const agora = new Date().toLocaleTimeString('pt-PT');
-      document.getElementById("statusLeitura").innerText = `Última atualização de mercado às ${agora} • Valor Intrínseco Ativo`;
+    function calcularSinal(a, av) {
+      if (a.eps <= 0 || av === "MUITO CARO") return "NÃO COMPRAR";
+      if (av === "MUITO BARATO" || av === "BARATO" || av === "PREÇO JUSTO") return "COMPRAR";
+      return "AGUARDAR";
     }
 
-    function forcarAtualizacao() {
-      segundosRestantes = 120;
-      document.getElementById("contador").innerText = "02:00";
-      simularOscilacaoMercado();
+    function calcularPeAtual(a) {
+      if (a.eps <= 0) return "Prejuízo";
+      return (a.p / a.eps).toFixed(1);
+    }
+
+    function guardarApiKey() {
+      apiKey = document.getElementById("apiKeyInput").value.trim();
+      if (apiKey) {
+        localStorage.setItem("radar_finnhub_key", apiKey);
+      } else {
+        localStorage.removeItem("radar_finnhub_key");
+      }
+      atualizarTudo(true);
+    }
+
+    async function buscarCotacoesReais() {
+      if (!apiKey) {
+        document.getElementById("fonteEstado").innerText = "Base local ativa (sem API Key Finnhub)";
+        return false;
+      }
+
+      const simbolosComApi = ativos.filter(a => a.apiSym);
+      let atualizados = 0;
+
+      // Pequeno atraso entre pedidos para evitar rate-limit em planos gratuitos
+      for (const item of simbolosComApi) {
+        try {
+          const resp = await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(item.apiSym)}&token=${encodeURIComponent(apiKey)}`);
+          if (!resp.ok) continue;
+          const data = await resp.json();
+          if (typeof data.c === "number" && data.c > 0) {
+            item.p = Number(data.c.toFixed(2));
+            atualizados++;
+          }
+        } catch (_) {
+          // Mantém o último valor conhecido se houver falha de rede
+        }
+        await new Promise(r => setTimeout(r, 120));
+      }
+
+      document.getElementById("fonteEstado").innerText = atualizados > 0
+        ? `Finnhub ao vivo (${atualizados} cotações sincronizadas)`
+        : "Sem resposta da API — a manter últimos valores";
+      return atualizados > 0;
+    }
+
+    async function atualizarTudo(manual = false) {
+      await buscarCotacoesReais();
+      const agora = new Date().toLocaleTimeString('pt-PT');
+      document.getElementById("statusLeitura").innerText = `${manual ? "Atualização manual" : "Atualização automática"} às ${agora} • Valor Intrínseco Recalculado`;
       renderizar();
     }
 
@@ -369,12 +455,15 @@
       grelha.innerHTML = "";
 
       const filtrados = ativos.filter(a => {
-        const avAtual = calcularAvaliacao(a.p, a.vi);
+        const vi = calcularValorIntrinseco(a);
+        const avAtual = calcularAvaliacao(a.p, vi);
+        const decAtual = calcularSinal(a, avAtual);
+
         const matchSetor = setorSelecionado === "TODOS" || a.s === setorSelecionado;
         const matchTermo = a.t.toLowerCase().includes(termo) || a.n.toLowerCase().includes(termo);
-        
+
         let matchSinal = true;
-        if (sinalAtivo === "COMPRAR") matchSinal = a.dec === "COMPRAR";
+        if (sinalAtivo === "COMPRAR") matchSinal = decAtual === "COMPRAR";
         else if (sinalAtivo === "MUITO_BARATO") matchSinal = avAtual === "MUITO BARATO";
         else if (sinalAtivo === "BARATO") matchSinal = avAtual === "BARATO";
         else if (sinalAtivo === "ACUMULATIVO") matchSinal = a.tipo === "ACUMULATIVO";
@@ -389,16 +478,20 @@
       }
 
       filtrados.forEach(a => {
-        const avAtual = calcularAvaliacao(a.p, a.vi);
-        const margem = (((a.vi - a.p) / a.vi) * 100).toFixed(1);
+        const vi = calcularValorIntrinseco(a);
+        const avAtual = calcularAvaliacao(a.p, vi);
+        const decAtual = calcularSinal(a, avAtual);
+        const peAtual = calcularPeAtual(a);
+
+        const margem = (((vi - a.p) / vi) * 100).toFixed(1);
         const corMargem = margem > 0 ? "#34d399" : "#f87171";
         const sinalMargem = margem > 0 ? `+${margem}%` : `${margem}%`;
 
         let classeCard = "aguardar";
-        if (a.dec === "COMPRAR") classeCard = "comprar";
-        if (a.dec === "NÃO COMPRAR") classeCard = "evitar";
+        if (decAtual === "COMPRAR") classeCard = "comprar";
+        if (decAtual === "NÃO COMPRAR") classeCard = "evitar";
 
-        const classeDec = a.dec === "COMPRAR" ? "comprar" : (a.dec === "AGUARDAR" ? "aguardar" : "evitar");
+        const classeDec = decAtual === "COMPRAR" ? "comprar" : (decAtual === "AGUARDAR" ? "aguardar" : "evitar");
         const classeTipo = a.tipo === "ACUMULATIVO" ? "acumulativo" : "dividendos";
 
         grelha.innerHTML += `
@@ -410,7 +503,7 @@
                   <span class="setor">${a.s}</span>
                   <div class="nome">${a.n}</div>
                 </div>
-                <span class="badge-decisao ${classeDec}">${a.dec}</span>
+                <span class="badge-decisao ${classeDec}">${decAtual}</span>
               </div>
               <div class="badges-row">
                 <span class="badge-tipo ${classeTipo}">${a.tipo}</span>
@@ -423,7 +516,7 @@
                 </div>
                 <div class="val-item">
                   <span>Valor Intrínseco</span>
-                  <strong style="color: #38bdf8;">${a.m}${a.vi.toFixed(2)}</strong>
+                  <strong style="color: #38bdf8;">${a.m}${vi.toFixed(2)}</strong>
                 </div>
                 <div class="val-item">
                   <span>Margem Seg.</span>
@@ -433,7 +526,7 @@
               <div class="nota">${a.nota}</div>
             </div>
             <div class="card-footer">
-              <span>P/E: <strong style="color: #e2e8f0;">${a.pe}</strong></span>
+              <span>P/E: <strong style="color: #e2e8f0;">${peAtual}</strong></span>
               <span>Potencial: <strong style="color: #e2e8f0;">${a.pot}</strong></span>
             </div>
           </div>
@@ -445,8 +538,7 @@
       segundosRestantes--;
       if (segundosRestantes <= 0) {
         segundosRestantes = 120;
-        simularOscilacaoMercado();
-        renderizar();
+        atualizarTudo(false);
       }
       const min = String(Math.floor(segundosRestantes / 60)).padStart(2, '0');
       const seg = String(segundosRestantes % 60).padStart(2, '0');
@@ -454,6 +546,9 @@
     }, 1000);
 
     renderizar();
+    if (apiKey) {
+      atualizarTudo(false);
+    }
   </script>
 </body>
 </html>
